@@ -1,13 +1,14 @@
 // Alle lydeffekter lages i nettleseren med Web Audio. Ingen lydfiler, ingen rettigheter.
 // Lyd brukes bare på viktige øyeblikk: intro, svar, poeng, drama, finale og seier.
 import type { SoundName } from '../core/types';
+import { melodyById } from './melodies';
 
 type Ctx = AudioContext;
 
 const NOTE: Record<string, number> = {
   C4: 261.63, D4: 293.66, E4: 329.63, F4: 349.23, G4: 392.0, A4: 440.0, B4: 493.88,
   C5: 523.25, D5: 587.33, E5: 659.25, F5: 698.46, G5: 783.99, A5: 880.0, B5: 987.77,
-  C6: 1046.5, E6: 1318.5, G6: 1568.0, C3: 130.81, G3: 196.0, E3: 164.81, A3: 220.0, F3: 174.61,
+  B3: 246.94, C6: 1046.5, E6: 1318.5, G6: 1568.0, C3: 130.81, G3: 196.0, E3: 164.81, A3: 220.0, F3: 174.61,
 };
 
 class SoundManagerImpl {
@@ -33,6 +34,38 @@ class SoundManagerImpl {
   get ready() {
     return !!this.ctx && this.ctx.state === 'running';
   }
+
+  /** Spiller en innebygd julemelodi (lydrunden). Stopper en melodi som allerede spiller. */
+  playMelody(id: string) {
+    const m = melodyById(id);
+    if (!this.enabled || !this.ctx || !this.master || !m) return;
+    this.stopMelody();
+    const out = this.ctx.createGain();
+    out.gain.value = 1;
+    out.connect(this.master);
+    this.melodyOut = out;
+    const beat = 60 / m.bpm;
+    let t = this.ctx.currentTime + 0.05;
+    for (const [n, beats] of m.notes) {
+      const f = NOTE[n];
+      const dur = beats * beat;
+      if (f) {
+        tone(this.ctx, out, f, t, Math.max(0.25, dur * 0.95), { type: 'triangle', gain: 0.22, attack: 0.02 });
+        tone(this.ctx, out, f * 2, t, Math.max(0.2, dur * 0.6), { gain: 0.05 });
+      }
+      t += dur;
+    }
+  }
+
+  stopMelody() {
+    if (!this.melodyOut || !this.ctx) return;
+    const old = this.melodyOut;
+    old.gain.setTargetAtTime(0, this.ctx.currentTime, 0.03);
+    setTimeout(() => old.disconnect(), 300);
+    this.melodyOut = null;
+  }
+
+  private melodyOut: GainNode | null = null;
 
   play(name: SoundName) {
     if (!this.enabled || !this.ctx || !this.master) return;

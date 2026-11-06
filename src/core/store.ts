@@ -12,8 +12,24 @@ import type { RoundContext } from '../rounds/types';
 export const STORAGE_KEY = 'julegameshow:spill';
 const FX_MS = 3400;
 
-export const defaultRoundPlan = (): RoundInstance[] =>
-  ROUND_ORDER.map((type) => ({ id: uid('runde'), type, enabled: true }));
+export const defaultRoundPlan = (): RoundInstance[] => suggestPlan(6, 'lag');
+
+/**
+ * Kveldsplanen tilpasset gruppa: 4 spillere får flere individuelle runder og dueller,
+ * 6–8 får flest sosiale runder, 9–10 får mer lagbaserte runder. Finalen ligger alltid sist.
+ */
+export function suggestPlan(playerCount: number, mode: GameMode): RoundInstance[] {
+  const picks =
+    playerCount <= 5 && mode === 'alle'
+      ? ['julequiz', 'duell', 'julefilm', 'pakker', 'lyn', 'satsing']
+      : playerCount <= 8
+        ? ['julequiz', 'hvem', 'julefilm', 'pakker', 'mime', 'satsing']
+        : ['julequiz', 'hvem', 'julefilm', 'pakker', 'bilde', 'satsing'];
+  const known = ROUND_ORDER.filter((t) => !getRound(t)?.fixedLast);
+  const order = [...picks.filter((t) => known.includes(t)), ...known.filter((t) => !picks.includes(t))];
+  const last = ROUND_ORDER.filter((t) => getRound(t)?.fixedLast);
+  return [...order, ...last].map((type) => ({ id: uid('runde'), type, enabled: picks.includes(type) || last.includes(type) }));
+}
 
 export function initialState(): GameState {
   return {
@@ -38,6 +54,7 @@ export function initialState(): GameState {
     showScoreboard: false,
     revealCount: 0,
     settings: { sound: true },
+    planTouched: false,
   };
 }
 
@@ -59,6 +76,7 @@ export function roundContext(s: GameState): RoundContext {
     mode: s.mode,
     hostPlays: s.hostPlays,
     attention: s.attention,
+    scores: totals(s.scoreLog, contestantsOf(s)),
   };
 }
 
@@ -105,6 +123,9 @@ export interface GameActions {
   showFx(event: Omit<FxEvent, 'id'>): void;
   clearFx(): void;
   playSound(name: SoundName): void;
+  playMelody(id: string): void;
+  /** Foreslår kveldsplan etter antall spillere, hvis programlederen ikke har endret den. */
+  suggestPlanIfUntouched(): void;
   toggleScoreboard(): void;
   revealNext(): void;
   toggleSound(): void;
@@ -214,16 +235,19 @@ export const useGame = create<Store>()(
 
         renameTeam: (id, name) => set((s) => ({ teams: s.teams.map((t) => (t.id === id ? { ...t, name: name.slice(0, 24) } : t)) })),
 
-        toggleRound: (id) => set((s) => ({ roundPlan: s.roundPlan.map((r) => (r.id === id ? { ...r, enabled: !r.enabled } : r)) })),
+        toggleRound: (id) => set((s) => ({ planTouched: true, roundPlan: s.roundPlan.map((r) => (r.id === id ? { ...r, enabled: !r.enabled } : r)) })),
+
+        suggestPlanIfUntouched: () => set((s) => (s.planTouched ? {} : { roundPlan: suggestPlan(s.players.length, s.mode) })),
 
         moveRound: (id, dir) =>
           set((s) => {
             const i = s.roundPlan.findIndex((r) => r.id === id);
             const j = i + dir;
             if (i < 0 || j < 0 || j >= s.roundPlan.length) return {};
+            if (getRound(s.roundPlan[i].type)?.fixedLast || getRound(s.roundPlan[j].type)?.fixedLast) return {};
             const plan = [...s.roundPlan];
             [plan[i], plan[j]] = [plan[j], plan[i]];
-            return { roundPlan: plan };
+            return { roundPlan: plan, planTouched: true };
           }),
 
         startShow: () => {
@@ -258,9 +282,23 @@ export const useGame = create<Store>()(
           const s = get();
           const def = getRound(s.roundPlan[s.roundIndex]?.type);
           if (!def || s.roundPhase !== 'spill' || s.roundState == null) return;
-          set({ roundState: def.reduce(s.roundState, action, roundContext(s)) });
-          const sound = def.soundFor?.(action, s.roundState);
+          const ctx = roundContext(s);
+          const prev = s.roundState;
+          const next = def.reduce(prev, action, ctx);
+          set({ roundState: next });
+          const sound = def.soundFor?.(action, prev);
           if (sound) cue(sound);
+          for (const e of def.effectsFor?.(action, prev, next, ctx) ?? []) {
+            const g = get();
+            if (e.kind === 'award') g.award(e.contestantId, e.delta, e.reason, { manual: e.manual });
+            else if (e.kind === 'double') g.grantDoubleNext(e.contestantId);
+            else if (e.kind === 'attention')
+              set((st) => ({ attention: { ...st.attention, ...Object.fromEntries(e.contestantIds.map((id) => [id, (st.attention[id] ?? 0) + 1])) } }));
+            else if (e.kind === 'fx') showFx(e.fx);
+            else if (e.kind === 'sound') cue(e.name);
+            else if (e.kind === 'melody') g.playMelody(e.id);
+            else if (e.kind === 'timer') (e.ms === null ? g.resetTimer(0) : g.startTimer(e.ms));
+          }
         },
 
         endRound: () => {
@@ -336,6 +374,7 @@ export const useGame = create<Store>()(
         showFx,
         clearFx: () => set({ fx: null }),
         playSound: cue,
+        playMelody: (melody) => set({ cue: { id: uid('lyd'), name: 'klikk', melody } }),
 
         toggleScoreboard: () => set((s) => ({ showScoreboard: !s.showScoreboard })),
 
@@ -379,7 +418,10 @@ export const useGame = create<Store>()(
         const merged = { ...current, ...saved };
         const known = (saved.roundPlan ?? []).filter((r) => getRound(r.type));
         const missing = defaultRoundPlan().filter((r) => !known.some((k) => k.type === r.type));
-        merged.roundPlan = [...known, ...missing];
+        const plan = [...known, ...missing.map((r) => ({ ...r, enabled: !!getRound(r.type)?.fixedLast }))];
+        // Finalen ligger alltid sist.
+        merged.roundPlan = [...plan.filter((r) => !getRound(r.type)?.fixedLast), ...plan.filter((r) => getRound(r.type)?.fixedLast)];
+        merged.planTouched = saved.planTouched ?? false;
         if (merged.scene === 'runde' && !merged.roundPlan[merged.roundIndex]) merged.scene = 'velkommen';
         return merged;
       },

@@ -23,7 +23,7 @@ export function QuizStage({ state, ctx }: StageProps<QuizState>) {
   const winners = ctx.contestants.filter((c) => state.marks[state.index]?.[c.id]);
 
   return (
-    <AnimatePresence mode="wait">
+    <AnimatePresence>
       <motion.div
         key={q.id}
         className="scene quiz"

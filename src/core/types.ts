@@ -88,6 +88,8 @@ export type SoundName =
 export interface SoundCue {
   id: string;
   name: SoundName;
+  /** Id til en innebygd julemelodi som skal spilles (lydrunden). */
+  melody?: string;
 }
 
 export interface GameState {
@@ -116,4 +118,6 @@ export interface GameState {
   /** Antall plasseringer som er avslørt i vinnerscenen. */
   revealCount: number;
   settings: { sound: boolean };
+  /** Programlederen har endret kveldsplanen selv, så den foreslås ikke på nytt. */
+  planTouched: boolean;
 }

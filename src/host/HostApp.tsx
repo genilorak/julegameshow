@@ -259,6 +259,8 @@ function useShortcuts() {
       const ui = useUi.getState();
       const key = e.key.toLowerCase();
       if (key === ' ' || key === 'arrowright' || key === 'pagedown') {
+        // Mellomrom skal aldri «klikke» knappen som sist fikk fokus, bare gå videre i showet.
+        if (el.tagName === 'BUTTON') el.blur();
         const p = primaryStep(s);
         if (p && !p.disabled) p.run();
       } else if (key === 'arrowleft' || key === 'pageup') backStep(s)?.run();
