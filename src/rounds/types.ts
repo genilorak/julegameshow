@@ -9,7 +9,19 @@ export interface RoundContext {
   mode: GameMode;
   hostPlays: boolean;
   attention: Record<string, number>;
+  /** Nåværende poengsum per deltaker. */
+  scores: Record<string, number>;
 }
+
+/** Ting en runde kan be showet om å gjøre etter en handling. */
+export type RoundEffect =
+  | { kind: 'award'; contestantId: string; delta: number; reason: string; manual?: boolean }
+  | { kind: 'double'; contestantId: string }
+  | { kind: 'attention'; contestantIds: string[] }
+  | { kind: 'fx'; fx: Omit<FxEvent, 'id'> }
+  | { kind: 'sound'; name: SoundName }
+  | { kind: 'melody'; id: string }
+  | { kind: 'timer'; ms: number | null };
 
 /** Det programlederkontrollene kan gjøre utover sin egen tilstand. */
 export interface RoundApi<A> {
@@ -67,6 +79,10 @@ export interface RoundDefinition<S = any, A = any> {
   back?(state: S): A | null;
   /** Lyd som skal spilles når en handling skjer (valgfritt). */
   soundFor?(action: A, state: S): SoundName | null;
+  /** Poeng, lyd og annet som skal skje når en handling er utført (valgfritt). */
+  effectsFor?(action: A, prev: S, next: S, ctx: RoundContext): RoundEffect[];
+  /** Runden ligger alltid sist i kveldsplanen (finalen). */
+  fixedLast?: boolean;
   Stage: ComponentType<StageProps<S>>;
   Controls: ComponentType<ControlsProps<S, A>>;
 }

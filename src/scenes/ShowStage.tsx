@@ -4,6 +4,7 @@ import { useGame } from '../core/store';
 import { Stage } from '../design/Stage';
 import { TimerRing } from '../design/TimerRing';
 import { Confetti } from '../design/Confetti';
+import { Emo } from '../design/Emo';
 import { Scoreboard } from '../scoreboard/Scoreboard';
 import { SoundManager } from '../sound/SoundManager';
 import { getRound } from '../rounds/registry';
@@ -40,7 +41,7 @@ export function ShowStage({ interactive, audio }: { interactive: boolean; audio:
 
   return (
     <Stage>
-      <AnimatePresence mode="wait">
+      <AnimatePresence>
         <motion.div
           key={scene}
           style={{ position: 'absolute', inset: 0 }}
@@ -73,7 +74,7 @@ export function ShowStage({ interactive, audio }: { interactive: boolean; audio:
             <div className={`fx-rays ${fx.kind === 'au' || fx.kind === 'tid' ? 'red' : ''}`} />
             {(fx.kind === 'julemirakel' || fx.kind === 'comeback') && <Confetti fire={fx.id} />}
             <motion.h1 className="fx-title" initial={{ scale: 2.4, opacity: 0, rotate: -4 }} animate={{ scale: 1, opacity: 1, rotate: 0 }} transition={{ type: 'spring', stiffness: 200, damping: 14 }}>
-              {fx.title}
+              <Emo text={fx.title} />
             </motion.h1>
             {fx.subtitle && (
               <motion.p className="fx-sub" initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
@@ -105,6 +106,9 @@ function useSoundCues(audio: boolean) {
   useEffect(() => {
     if (!cue || cue.id === lastId.current) return;
     lastId.current = cue.id;
-    if (audio) SoundManager.play(cue.name);
+    if (!audio) return;
+    if (cue.melody === 'stopp') SoundManager.stopMelody();
+    else if (cue.melody) SoundManager.playMelody(cue.melody);
+    else SoundManager.play(cue.name);
   }, [cue, audio]);
 }

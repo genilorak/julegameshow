@@ -68,7 +68,7 @@ export function RoundScene({ interactive }: SceneProps) {
   const isLast = nextEnabledIndex(s.roundPlan, s.roundIndex) === -1;
 
   return (
-    <AnimatePresence mode="wait">
+    <AnimatePresence>
       {s.roundPhase === 'intro' && (
         <motion.div key={`intro-${inst.id}`} className="scene" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, scale: 1.1, filter: 'blur(14px)' }} transition={{ duration: 0.7 }}>
           <motion.div className="round-number" initial={{ opacity: 0, letterSpacing: '1.2em' }} animate={{ opacity: 1, letterSpacing: '0.5em' }} transition={{ duration: 1.4, ease: [0.16, 1, 0.3, 1] }}>

@@ -41,12 +41,21 @@ export function primaryStep(s: Store): FlowStep | null {
           if (s.mode === 'lag') {
             if (s.teams.length === 0) s.drawTeams();
             s.go('lag');
-          } else s.go('runder');
+          } else {
+            s.suggestPlanIfUntouched();
+            s.go('runder');
+          }
         },
       };
     case 'lag': {
       const empty = s.teams.some((t) => t.playerIds.length === 0);
-      return { label: 'Videre', run: () => s.go('runder'), disabled: empty, hint: empty ? 'Alle lag må ha minst én spiller' : undefined };
+      return {
+        label: 'Videre',
+        run: () => {
+          s.suggestPlanIfUntouched();
+          s.go('runder');
+        },
+        disabled: empty, hint: empty ? 'Alle lag må ha minst én spiller' : undefined };
     }
     case 'runder': {
       const none = nextEnabledIndex(s.roundPlan, -1) === -1;
@@ -72,6 +81,8 @@ export function primaryStep(s: Store): FlowStep | null {
       if (s.roundPhase === 'spill') {
         const p = s.roundState != null ? def.primary(s.roundState) : null;
         if (p) return { label: p.label, run: () => s.roundDispatch(p.action) };
+        // Runden venter på et valg i rundepanelet (f.eks. hvilken pakke). Mellomrom skal ikke hoppe over den.
+        if (s.roundState != null && !def.isDone(s.roundState)) return { label: 'Velg i rundepanelet', run: () => {}, disabled: true, hint: 'Bruk knappene for runden under' };
         return { label: 'Vis poengtavla', run: () => s.endRound() };
       }
       const isLast = nextEnabledIndex(s.roundPlan, s.roundIndex) === -1;
@@ -82,7 +93,8 @@ export function primaryStep(s: Store): FlowStep | null {
         const place = contestants.length - s.revealCount;
         return { label: place === 1 ? 'Avslør vinneren! 🏆' : `Avslør ${place}. plass`, run: () => s.revealNext() };
       }
-      return { label: 'Nytt spill', run: () => s.newGameSamePlayers() };
+      // Ikke la et ekstra trykk på mellomrom starte et nytt spill og fjerne vinnerbildet.
+      return { label: 'Showet er ferdig 🎉', run: () => {}, disabled: true, hint: 'Vil dere spille igjen? Velg «Nytt spill» under ☰ Meny.' };
     }
   }
 }
